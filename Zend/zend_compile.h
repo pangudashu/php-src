@@ -173,6 +173,10 @@ typedef struct _zend_try_catch_element {
 	uint32_t finally_end;
 } zend_try_catch_element;
 
+typedef struct _zend_defer_call_element {
+    int start;
+} zend_defer_call_element;
+
 #define ZEND_LIVE_TMPVAR  0
 #define ZEND_LIVE_LOOP    1
 #define ZEND_LIVE_SILENCE 2
@@ -197,6 +201,7 @@ typedef struct _zend_oparray_context {
 	int        last_brk_cont;
 	zend_brk_cont_element *brk_cont_array;
 	HashTable *labels;
+    zend_ast  **defer_call_array;
 } zend_oparray_context;
 
 /*
@@ -401,6 +406,9 @@ struct _zend_op_array {
 
 	int  cache_size;
 	void **run_time_cache;
+
+    int last_defer_call;
+    zend_defer_call_element *defer_call_array;
 
 	void *reserved[ZEND_MAX_RESERVED_RESOURCES];
 };
