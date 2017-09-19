@@ -174,6 +174,7 @@ typedef struct _zend_try_catch_element {
 } zend_try_catch_element;
 
 typedef struct _zend_defer_call_element {
+    zend_ast *ast;  /* used only during compilation */
     int start;
 } zend_defer_call_element;
 
@@ -201,7 +202,6 @@ typedef struct _zend_oparray_context {
 	int        last_brk_cont;
 	zend_brk_cont_element *brk_cont_array;
 	HashTable *labels;
-    zend_ast  **defer_call_array;
 } zend_oparray_context;
 
 /*

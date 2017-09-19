@@ -1051,6 +1051,42 @@ static uint32_t zend_add_try_element(uint32_t try_op) /* {{{ */
 }
 /* }}} */
 
+void zend_handle_defer_call() 
+{
+    if (!CG(active_op_array)->defer_call_array) {
+        return;
+    }
+
+    zend_emit_op(NULL, ZEND_DEFER_CALL, NULL, NULL);
+}
+
+void zend_compile_defer_call_stmt()
+{
+    if (!CG(active_op_array)->defer_call_array) {
+        return ;
+    }
+
+    zend_defer_call_element *elem;
+    int defer_num  = 0;
+
+    //compile defer call statement
+    while(defer_num < CG(active_op_array)->last_defer_call){
+        elem = &CG(active_op_array)->defer_call_array[defer_num];
+
+        if (NULL == elem->ast) {
+            continue;
+        }
+        elem->start = get_next_op_number(CG(active_op_array));
+
+        zend_compile_stmt(elem->ast->child[0]);
+
+        //emit opcode: ZEND_DEFER_CALL_DONE
+        zend_emit_op(NULL, ZEND_DEFER_CALL_DONE, NULL, NULL);
+        defer_num++;
+    }
+}
+
+
 ZEND_API void function_add_ref(zend_function *function) /* {{{ */
 {
 	if (function->type == ZEND_USER_FUNCTION) {
@@ -2402,8 +2438,12 @@ void zend_emit_final_return(int return_one) /* {{{ */
 		ZVAL_NULL(&zn.u.constant);
 	}
 
+    zend_handle_defer_call();
+
 	ret = zend_emit_op(NULL, returns_reference ? ZEND_RETURN_BY_REF : ZEND_RETURN, &zn, NULL);
 	ret->extended_value = -1;
+
+    zend_compile_defer_call_stmt();
 }
 /* }}} */
 
@@ -4448,6 +4488,8 @@ void zend_compile_return(zend_ast *ast) /* {{{ */
 	}
 
 	zend_handle_loops_and_finally((expr_node.op_type & (IS_TMP_VAR | IS_VAR)) ? &expr_node : NULL);
+
+    zend_handle_defer_call();
 
 	opline = zend_emit_op(NULL, by_ref ? ZEND_RETURN_BY_REF : ZEND_RETURN,
 		&expr_node, NULL);
@@ -8053,6 +8095,35 @@ void zend_const_expr_to_zval(zval *result, zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+static uint32_t zend_add_defer_call_element(zend_ast *ast) /* {{{ */
+{
+	zend_op_array *op_array = CG(active_op_array);
+	uint32_t defer_call_offset = op_array->last_defer_call++;
+	zend_defer_call_element *elem;
+
+	op_array->defer_call_array = safe_erealloc(
+		op_array->defer_call_array, sizeof(zend_defer_call_element), op_array->last_defer_call, 0);
+
+	elem = &op_array->defer_call_array[defer_call_offset];
+    elem->ast = ast;
+
+	return defer_call_offset;
+}
+/* }}} */
+
+void zend_compile_defer_call(zend_ast *ast)
+{
+    uint32_t defer_call_offset;
+    zend_op *opline;
+    
+    //1) create zend_defer_call_element
+    defer_call_offset = zend_add_defer_call_element(ast);
+    
+    //2) emit opcode: ZEND_DEFER_SET
+    opline = zend_emit_op(NULL, ZEND_DEFER_SET, NULL, NULL);
+	opline->op1.num = defer_call_offset;
+}
+
 /* Same as compile_stmt, but with early binding */
 void zend_compile_top_stmt(zend_ast *ast) /* {{{ */
 {
@@ -8180,6 +8251,9 @@ void zend_compile_stmt(zend_ast *ast) /* {{{ */
 		case ZEND_AST_HALT_COMPILER:
 			zend_compile_halt_compiler(ast);
 			break;
+        case ZEND_AST_DEFER_CALL:
+            zend_compile_defer_call(ast);
+            break;
 		default:
 		{
 			znode result;

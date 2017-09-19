@@ -95,6 +95,9 @@ void init_op_array(zend_op_array *op_array, zend_uchar type, int initial_ops_siz
 	op_array->run_time_cache = NULL;
 	op_array->cache_size = 0;
 
+    op_array->defer_call_array = NULL;
+    op_array->last_defer_call =0;
+
 	memset(op_array->reserved, 0, ZEND_MAX_RESERVED_RESOURCES * sizeof(void*));
 
 	if (zend_extension_flags & ZEND_EXTENSIONS_HAVE_OP_ARRAY_CTOR) {
@@ -449,6 +452,9 @@ ZEND_API void destroy_op_array(zend_op_array *op_array)
 		}
 		efree(arg_info);
 	}
+    if (op_array->defer_call_array) {
+        efree(op_array->defer_call_array);
+    }
 }
 
 void init_op(zend_op *op)
