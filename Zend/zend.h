@@ -38,6 +38,7 @@
 #include "zend_smart_str_public.h"
 #include "zend_smart_string_public.h"
 #include "zend_signal.h"
+#include "zend_coroutine.h"
 
 #define HANDLE_BLOCK_INTERRUPTIONS()		ZEND_SIGNAL_BLOCK_INTERRUPTIONS()
 #define HANDLE_UNBLOCK_INTERRUPTIONS()		ZEND_SIGNAL_UNBLOCK_INTERRUPTIONS()

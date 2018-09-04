@@ -18,7 +18,8 @@ libZend_la_SOURCES=\
 	zend_default_classes.c \
 	zend_iterators.c zend_interfaces.c zend_exceptions.c \
 	zend_strtod.c zend_closures.c zend_float.c zend_string.c zend_signal.c \
-	zend_generators.c zend_virtual_cwd.c zend_ast.c zend_smart_str.c zend_cpuinfo.c
+	zend_generators.c zend_virtual_cwd.c zend_ast.c zend_smart_str.c zend_cpuinfo.c \
+    zend_coroutine.c arch/x64.s zend_heap.c zend_event.c events/epoll.c
 
 libZend_la_CFLAGS = -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1
 libZend_la_LDFLAGS =

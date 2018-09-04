@@ -33,6 +33,7 @@
 #include "zend_generators.h"
 #include "zend_vm.h"
 #include "zend_float.h"
+#include "zend_event.h"
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
@@ -156,6 +157,8 @@ void init_executor(void) /* {{{ */
 	ZVAL_UNDEF(&EG(user_exception_handler));
 
 	EG(current_execute_data) = NULL;
+
+    EG(event) = zend_event_create();
 
 	zend_stack_init(&EG(user_error_handlers_error_reporting), sizeof(int));
 	zend_stack_init(&EG(user_error_handlers), sizeof(zval));
@@ -378,6 +381,8 @@ void shutdown_executor(void) /* {{{ */
 #endif
 
 	EG(ht_iterators_used) = 0;
+
+    zend_event_destroy(EG(event));
 
 	zend_shutdown_fpu();
 }

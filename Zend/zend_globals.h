@@ -36,6 +36,7 @@
 #include "zend_multibyte.h"
 #include "zend_multiply.h"
 #include "zend_arena.h"
+#include "zend_event.h"
 
 /* Define ZTS if you want a thread-safe Zend */
 /*#undef ZTS*/
@@ -157,6 +158,9 @@ struct _zend_executor_globals {
 
 	struct _zend_execute_data *current_execute_data;
 	zend_class_entry *fake_scope; /* used to avoid checks accessing properties */
+
+    zend_event_module *event;
+    zend_coroutine *current_coroutine;
 
 	zend_long precision;
 

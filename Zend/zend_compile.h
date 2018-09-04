@@ -22,6 +22,7 @@
 
 #include "zend.h"
 #include "zend_ast.h"
+#include "zend_coroutine.h"
 
 #ifdef HAVE_STDARG_H
 # include <stdarg.h>
@@ -486,6 +487,7 @@ typedef enum _zend_call_kind {
 struct _zend_execute_data {
 	const zend_op       *opline;           /* executed opline                */
 	zend_execute_data   *call;             /* current call                   */
+	zend_coroutine      *coroutine;             /* current call                   */
 	zval                *return_value;
 	zend_function       *func;             /* executed function              */
 	zval                 This;             /* this + call_info + num_args    */
