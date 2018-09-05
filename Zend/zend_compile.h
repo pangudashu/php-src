@@ -488,6 +488,7 @@ struct _zend_execute_data {
 	const zend_op       *opline;           /* executed opline                */
 	zend_execute_data   *call;             /* current call                   */
 	zend_coroutine      *coroutine;             /* current call                   */
+    int                 is_coroutine_call;
 	zval                *return_value;
 	zend_function       *func;             /* executed function              */
 	zval                 This;             /* this + call_info + num_args    */
@@ -512,6 +513,7 @@ struct _zend_execute_data {
 #define ZEND_CALL_DYNAMIC            (1 << 9)
 #define ZEND_CALL_FAKE_CLOSURE       (1 << 10)
 #define ZEND_CALL_SEND_ARG_BY_REF    (1 << 11)
+#define ZEND_CALL_COROUTINE          (1 << 12)
 
 #define ZEND_CALL_INFO_SHIFT         16
 
@@ -869,6 +871,9 @@ void zend_assert_valid_class_name(const zend_string *const_name);
 #define ZEND_ARRAY_SYNTAX_LIST 1  /* list() */
 #define ZEND_ARRAY_SYNTAX_LONG 2  /* array() */
 #define ZEND_ARRAY_SYNTAX_SHORT 3 /* [] */
+
+/* is coroutine call */
+#define ZEND_IS_COROUTINE_CALL 1
 
 /* var status for backpatching */
 #define BP_VAR_R			0

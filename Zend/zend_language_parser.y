@@ -157,6 +157,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %token T_DECLARE    "declare (T_DECLARE)"
 %token T_ENDDECLARE "enddeclare (T_ENDDECLARE)"
 %token T_AS         "as (T_AS)"
+%token T_GO         "go (T_GO)"
 %token T_SWITCH     "switch (T_SWITCH)"
 %token T_ENDSWITCH  "endswitch (T_ENDSWITCH)"
 %token T_CASE       "case (T_CASE)"
@@ -990,6 +991,7 @@ expr:
 			{ $$ = zend_ast_create_decl(ZEND_AST_CLOSURE, $3 | $14 | ZEND_ACC_STATIC, $2, $4,
 			      zend_string_init("{closure}", sizeof("{closure}") - 1, 0),
 			      $6, $8, $12, $9); CG(extra_fn_flags) = $10; }
+	|	T_GO function_call { $$ = $2; $2->attr = ZEND_IS_COROUTINE_CALL;}
 ;
 
 function:

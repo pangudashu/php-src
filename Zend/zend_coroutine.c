@@ -19,6 +19,8 @@ ZEND_API zend_coroutine *zend_coroutine_create(zend_execute_data *execute_data)
     co = (zend_coroutine *)emalloc(sizeof(zend_coroutine) + ZEND_COROUTINE_STACK_SIZE);
 
     execute_data->coroutine = co;
+    execute_data->is_coroutine_call = 1;
+    execute_data->prev_execute_data = NULL;
 
     co->execute_data = execute_data;
     co->ctx = make_context(co->stack + ZEND_COROUTINE_STACK_SIZE, zend_coroutine_run);

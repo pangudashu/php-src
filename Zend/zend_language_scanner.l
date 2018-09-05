@@ -1392,6 +1392,10 @@ NEWLINE ("\r"|"\n"|"\r\n")
 	RETURN_TOKEN(T_GOTO);
 }
 
+<ST_IN_SCRIPTING>"go" {
+	RETURN_TOKEN(T_GO);
+}
+
 <ST_IN_SCRIPTING>"echo" {
 	RETURN_TOKEN(T_ECHO);
 }

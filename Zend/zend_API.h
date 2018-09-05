@@ -27,6 +27,7 @@
 #include "zend_operators.h"
 #include "zend_variables.h"
 #include "zend_execute.h"
+#include "zend_coroutine.h"
 
 
 BEGIN_EXTERN_C()

@@ -43,4 +43,5 @@ ZEND_API zend_coroutine *zend_coroutine_create(zend_execute_data *execute_data);
 ZEND_API void zend_coroutine_execute(zend_coroutine *co);
 ZEND_API void zend_coroutine_yield(zend_coroutine *co);
 
+ZEND_API int zend_coroutine_sleep(zend_coroutine *co, int timeout);
 #endif

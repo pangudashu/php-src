@@ -38,8 +38,14 @@ ZEND_API void zend_{%EXECUTOR_NAME%}(zend_op_array *op_array, zval *return_value
 	}
 	EX(prev_execute_data) = EG(current_execute_data);
 	i_init_code_execute_data(execute_data, op_array, return_value);
-	zend_{%EXECUTOR_NAME%}_ex(execute_data);
-	zend_vm_stack_free_call_frame(execute_data);
+	
+    //zend_{%EXECUTOR_NAME%}_ex(execute_data);
+	//zend_vm_stack_free_call_frame(execute_data);
+
+    zend_coroutine *co = zend_coroutine_create(execute_data);
+    zend_coroutine_execute(co);
+
+    zend_event_loop(EG(event));
 }
 
 {%EXTERNAL_EXECUTOR%}

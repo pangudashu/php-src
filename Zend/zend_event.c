@@ -142,8 +142,8 @@ ZEND_API void zend_event_loop(zend_event_module *module)
 
     while (1) {
         ret = module->wait(timeout);
-        
-        timeout = 0;
+    
+        timeout = -1;
         /* trigger timers */
         while ((time_node = zend_heap_top(module->timeout_list)) != NULL) {
             zend_event_timenow(&now);

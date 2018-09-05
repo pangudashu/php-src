@@ -481,6 +481,8 @@ ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value)
 	i_init_code_execute_data(execute_data, op_array, return_value);
 	
     //zend_execute_ex(execute_data);
+	//zend_vm_stack_free_call_frame(execute_data);
+
     zend_coroutine *co = zend_coroutine_create(execute_data);
     zend_coroutine_execute(co);
 
@@ -556,72 +558,70 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_
 {
 	zend_execute_data *old_execute_data;
 	uint32_t call_info = EX_CALL_INFO();
+    int is_coroutine_call = execute_data->is_coroutine_call;
 
-	if (EXPECTED((call_info & (ZEND_CALL_CODE|ZEND_CALL_TOP|ZEND_CALL_HAS_SYMBOL_TABLE|ZEND_CALL_FREE_EXTRA_ARGS|ZEND_CALL_ALLOCATED)) == 0)) {
-		i_free_compiled_variables(execute_data);
+    if (EXPECTED((call_info & (ZEND_CALL_CODE|ZEND_CALL_TOP|ZEND_CALL_HAS_SYMBOL_TABLE|ZEND_CALL_FREE_EXTRA_ARGS|ZEND_CALL_ALLOCATED)) == 0)) {
+        i_free_compiled_variables(execute_data);
 
-		EG(current_execute_data) = EX(prev_execute_data);
-		if (UNEXPECTED(call_info & ZEND_CALL_RELEASE_THIS)) {
-			zend_object *object = Z_OBJ(execute_data->This);
-#if 0
-			if (UNEXPECTED(EG(exception) != NULL) && (EX(opline)->op1.num & ZEND_CALL_CTOR)) {
-#else
-			if (UNEXPECTED(EG(exception) != NULL) && (call_info & ZEND_CALL_CTOR)) {
-#endif
-				GC_DELREF(object);
-				zend_object_store_ctor_failed(object);
-			}
-			OBJ_RELEASE(object);
-		} else if (UNEXPECTED(call_info & ZEND_CALL_CLOSURE)) {
-			OBJ_RELEASE(ZEND_CLOSURE_OBJECT(EX(func)));
-		}
-		EG(vm_stack_top) = (zval*)execute_data;
-		execute_data = EX(prev_execute_data);
+        EG(current_execute_data) = EX(prev_execute_data);
+        if (UNEXPECTED(call_info & ZEND_CALL_RELEASE_THIS)) {
+            zend_object *object = Z_OBJ(execute_data->This);
+            if (UNEXPECTED(EG(exception) != NULL) && (call_info & ZEND_CALL_CTOR)) {
+                GC_DELREF(object);
+                zend_object_store_ctor_failed(object);
+            }
+            OBJ_RELEASE(object);
+        } else if (UNEXPECTED(call_info & ZEND_CALL_CLOSURE)) {
+            OBJ_RELEASE(ZEND_CLOSURE_OBJECT(EX(func)));
+        }
+        EG(vm_stack_top) = (zval*)execute_data;
 
-		if (UNEXPECTED(EG(exception) != NULL)) {
-			zend_rethrow_exception(execute_data);
-			HANDLE_EXCEPTION_LEAVE();
-		}
+        if (!is_coroutine_call) {
+            execute_data = EX(prev_execute_data);
 
-		LOAD_NEXT_OPLINE();
-		ZEND_VM_LEAVE();
-	} else if (EXPECTED((call_info & (ZEND_CALL_CODE|ZEND_CALL_TOP)) == 0)) {
-		i_free_compiled_variables(execute_data);
+            if (UNEXPECTED(EG(exception) != NULL)) {
+                zend_rethrow_exception(execute_data);
+                HANDLE_EXCEPTION_LEAVE();
+            }
 
-		if (UNEXPECTED(call_info & ZEND_CALL_HAS_SYMBOL_TABLE)) {
-			zend_clean_and_cache_symbol_table(EX(symbol_table));
-		}
-		EG(current_execute_data) = EX(prev_execute_data);
-		if (UNEXPECTED(call_info & ZEND_CALL_RELEASE_THIS)) {
-			zend_object *object = Z_OBJ(execute_data->This);
-#if 0
-			if (UNEXPECTED(EG(exception) != NULL) && (EX(opline)->op1.num & ZEND_CALL_CTOR)) {
-#else
-			if (UNEXPECTED(EG(exception) != NULL) && (call_info & ZEND_CALL_CTOR)) {
-#endif
-				GC_DELREF(object);
-				zend_object_store_ctor_failed(object);
-			}
-			OBJ_RELEASE(object);
-		} else if (UNEXPECTED(call_info & ZEND_CALL_CLOSURE)) {
-			OBJ_RELEASE(ZEND_CLOSURE_OBJECT(EX(func)));
-		}
+            LOAD_NEXT_OPLINE();
+            ZEND_VM_LEAVE();
+        } else {
+            ZEND_VM_RETURN();
+        }
+    } else if (EXPECTED((call_info & (ZEND_CALL_CODE|ZEND_CALL_TOP)) == 0)) {
+        i_free_compiled_variables(execute_data);
 
-		zend_vm_stack_free_extra_args_ex(call_info, execute_data);
-		old_execute_data = execute_data;
-		execute_data = EX(prev_execute_data);
-		zend_vm_stack_free_call_frame_ex(call_info, old_execute_data);
+        if (UNEXPECTED(call_info & ZEND_CALL_HAS_SYMBOL_TABLE)) {
+            zend_clean_and_cache_symbol_table(EX(symbol_table));
+        }
+        EG(current_execute_data) = EX(prev_execute_data);
+        if (UNEXPECTED(call_info & ZEND_CALL_RELEASE_THIS)) {
+            zend_object *object = Z_OBJ(execute_data->This);
+            if (UNEXPECTED(EG(exception) != NULL) && (call_info & ZEND_CALL_CTOR)) {
+                GC_DELREF(object);
+                zend_object_store_ctor_failed(object);
+            }
+            OBJ_RELEASE(object);
+        } else if (UNEXPECTED(call_info & ZEND_CALL_CLOSURE)) {
+            OBJ_RELEASE(ZEND_CLOSURE_OBJECT(EX(func)));
+        }
 
-		if (UNEXPECTED(EG(exception) != NULL)) {
-			zend_rethrow_exception(execute_data);
-			HANDLE_EXCEPTION_LEAVE();
-		}
+        zend_vm_stack_free_extra_args_ex(call_info, execute_data);
+        old_execute_data = execute_data;
+        execute_data = EX(prev_execute_data);
+        zend_vm_stack_free_call_frame_ex(call_info, old_execute_data);
 
-		LOAD_NEXT_OPLINE();
-		ZEND_VM_LEAVE();
-	} else if (EXPECTED((call_info & ZEND_CALL_TOP) == 0)) {
-		zend_detach_symbol_table(execute_data);
-		destroy_op_array(&EX(func)->op_array);
+        if (UNEXPECTED(EG(exception) != NULL)) {
+            zend_rethrow_exception(execute_data);
+            HANDLE_EXCEPTION_LEAVE();
+        }
+
+        LOAD_NEXT_OPLINE();
+        ZEND_VM_LEAVE();
+    } else if (EXPECTED((call_info & ZEND_CALL_TOP) == 0)) {
+        zend_detach_symbol_table(execute_data);
+        destroy_op_array(&EX(func)->op_array);
 		efree_size(EX(func), sizeof(zend_op_array));
 		old_execute_data = execute_data;
 		execute_data = EG(current_execute_data) = EX(prev_execute_data);
@@ -772,6 +772,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_RETVAL_UNUSED_HA
 	zend_execute_data *call = EX(call);
 	zend_function *fbc = call->func;
 	zval *ret;
+    int is_coroutine_call;
 
 	SAVE_OPLINE();
 	EX(call) = call->prev_execute_data;
@@ -781,13 +782,23 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_RETVAL_UNUSED_HA
 		ret = EX_VAR(opline->result.var);
 		ZVAL_NULL(ret);
 	}
+    is_coroutine_call = (opline->op1.num & ZEND_CALL_COROUTINE) ? 1 : 0;
 
 	call->prev_execute_data = execute_data;
 	execute_data = call;
 	i_init_func_execute_data(&fbc->op_array, ret, 0 EXECUTE_DATA_CC);
-	LOAD_OPLINE();
 
-	ZEND_VM_ENTER_EX();
+    if (is_coroutine_call) {
+        zend_coroutine *co = zend_coroutine_create(execute_data);
+        zend_coroutine_execute(co);
+
+        execute_data = EG(current_execute_data);
+        LOAD_NEXT_OPLINE();
+	    ZEND_VM_CONTINUE();
+    } else {
+        LOAD_OPLINE();
+        ZEND_VM_ENTER_EX();
+    }
 }
 
 static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_RETVAL_USED_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
@@ -796,6 +807,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_RETVAL_USED_HAND
 	zend_execute_data *call = EX(call);
 	zend_function *fbc = call->func;
 	zval *ret;
+    int is_coroutine_call;
 
 	SAVE_OPLINE();
 	EX(call) = call->prev_execute_data;
@@ -805,13 +817,23 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_RETVAL_USED_HAND
 		ret = EX_VAR(opline->result.var);
 		ZVAL_NULL(ret);
 	}
+    is_coroutine_call = (opline->op1.num & ZEND_CALL_COROUTINE) ? 1 : 0;
 
 	call->prev_execute_data = execute_data;
 	execute_data = call;
 	i_init_func_execute_data(&fbc->op_array, ret, 0 EXECUTE_DATA_CC);
-	LOAD_OPLINE();
 
-	ZEND_VM_ENTER_EX();
+    if (is_coroutine_call) {
+        zend_coroutine *co = zend_coroutine_create(execute_data);
+        zend_coroutine_execute(co);
+
+        execute_data = EG(current_execute_data);
+        LOAD_NEXT_OPLINE();
+	    ZEND_VM_CONTINUE();
+    } else {
+        LOAD_OPLINE();
+        ZEND_VM_ENTER_EX();
+    }
 }
 
 static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_UNUSED_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
