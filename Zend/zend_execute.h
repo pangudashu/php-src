@@ -160,16 +160,16 @@ struct _zend_vm_stack {
  * The following "#if ZEND_DEBUG" eliminates it.
  */
 #if ZEND_DEBUG
-# define ZEND_ASSERT_VM_STACK(stack) ZEND_ASSERT(stack->top > (zval *) stack && stack->end > (zval *) stack && stack->top <= stack->end)
-# define ZEND_ASSERT_VM_STACK_GLOBAL ZEND_ASSERT(EG(vm_stack_top) > (zval *) EG(vm_stack) && EG(vm_stack_end) > (zval *) EG(vm_stack) && EG(vm_stack_top) <= EG(vm_stack_end))
+# define ZEND_ASSERT_VM_STACK(stack) ZEND_ASSERT(stack->top > (zval *) (stack) && stack->end > (zval *) (stack) && stack->top <= stack->end)
+# define ZEND_ASSERT_VM_STACK_GLOBAL ZEND_ASSERT(co->vm_stack_top > (zval *) (co->vm_stack) && co->vm_stack_end > (zval *) (co->vm_stack) && co->vm_stack_top <= co->vm_stack_end)
 #else
 # define ZEND_ASSERT_VM_STACK(stack)
 # define ZEND_ASSERT_VM_STACK_GLOBAL
 #endif
 
-ZEND_API void zend_vm_stack_init(void);
-ZEND_API void zend_vm_stack_destroy(void);
-ZEND_API void* zend_vm_stack_extend(size_t size);
+ZEND_API void zend_vm_stack_init(zend_coroutine *co);
+ZEND_API void zend_vm_stack_destroy(zend_coroutine *co);
+ZEND_API void* zend_vm_stack_extend(zend_coroutine *co, size_t size);
 
 static zend_always_inline void zend_vm_init_call_frame(zend_execute_data *call, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
 {
@@ -184,22 +184,24 @@ static zend_always_inline void zend_vm_init_call_frame(zend_execute_data *call, 
 	ZEND_CALL_NUM_ARGS(call) = num_args;
 }
 
-static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(uint32_t used_stack, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(zend_coroutine *co, uint32_t used_stack, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
 {
-	zend_execute_data *call = (zend_execute_data*)EG(vm_stack_top);
+	zend_execute_data *call = (zend_execute_data*)(co->vm_stack_top);
+    call->coroutine = co;
+    call->is_coroutine_call = 0;
 
 	ZEND_ASSERT_VM_STACK_GLOBAL;
 
-	if (UNEXPECTED(used_stack > (size_t)(((char*)EG(vm_stack_end)) - (char*)call))) {
-		call = (zend_execute_data*)zend_vm_stack_extend(used_stack);
-		ZEND_ASSERT_VM_STACK_GLOBAL;
-		zend_vm_init_call_frame(call, call_info | ZEND_CALL_ALLOCATED, func, num_args, called_scope, object);
-		return call;
-	} else {
-		EG(vm_stack_top) = (zval*)((char*)call + used_stack);
-		zend_vm_init_call_frame(call, call_info, func, num_args, called_scope, object);
-		return call;
-	}
+	if (UNEXPECTED(used_stack > (size_t)(((char*)(co->vm_stack_end)) - (char*)call))) {
+		call = (zend_execute_data*)zend_vm_stack_extend(co, used_stack);
+        ZEND_ASSERT_VM_STACK_GLOBAL;
+        zend_vm_init_call_frame(call, call_info | ZEND_CALL_ALLOCATED, func, num_args, called_scope, object);
+        return call;
+    } else {
+        co->vm_stack_top = (zval*)((char*)call + used_stack);
+        zend_vm_init_call_frame(call, call_info, func, num_args, called_scope, object);
+        return call;
+    }
 }
 
 static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, zend_function *func)
@@ -212,11 +214,11 @@ static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, ze
 	return used_stack * sizeof(zval);
 }
 
-static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(zend_coroutine *co, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
 {
 	uint32_t used_stack = zend_vm_calc_used_stack(num_args, func);
 
-	return zend_vm_stack_push_call_frame_ex(used_stack, call_info,
+	return zend_vm_stack_push_call_frame_ex(co, used_stack, call_info,
 		func, num_args, called_scope, object);
 }
 
@@ -267,19 +269,21 @@ static zend_always_inline void zend_vm_stack_free_args(zend_execute_data *call)
 
 static zend_always_inline void zend_vm_stack_free_call_frame_ex(uint32_t call_info, zend_execute_data *call)
 {
+    zend_coroutine *co = call->coroutine;
+
 	ZEND_ASSERT_VM_STACK_GLOBAL;
 
 	if (UNEXPECTED(call_info & ZEND_CALL_ALLOCATED)) {
-		zend_vm_stack p = EG(vm_stack);
+		zend_vm_stack p = co->vm_stack;
 		zend_vm_stack prev = p->prev;
 
-		ZEND_ASSERT(call == (zend_execute_data*)ZEND_VM_STACK_ELEMENTS(EG(vm_stack)));
-		EG(vm_stack_top) = prev->top;
-		EG(vm_stack_end) = prev->end;
-		EG(vm_stack) = prev;
+		ZEND_ASSERT(call == (zend_execute_data*)ZEND_VM_STACK_ELEMENTS(co->vm_stack));
+		co->vm_stack_top = prev->top;
+		co->vm_stack_end = prev->end;
+		co->vm_stack = prev;
 		efree(p);
 	} else {
-		EG(vm_stack_top) = (zval*)call;
+		co->vm_stack_top = (zval*)call;
 	}
 
 	ZEND_ASSERT_VM_STACK_GLOBAL;

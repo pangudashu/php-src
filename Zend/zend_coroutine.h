@@ -24,24 +24,41 @@
 
 #define ZEND_COROUTINE_STACK_SIZE   (1 << 20)
 
-typedef struct _zend_coroutine zend_coroutine;
+
+typedef enum _zend_coro_status  zend_coro_status;
+
+enum _zend_coro_status {
+    ZEND_CORO_STATUS_INIT,
+    ZEND_CORO_STATUS_WORKING,
+    ZEND_CORO_STATUS_SLEEP,
+    ZEND_CORO_STATUS_FINISHED,
+    ZEND_CORO_STATUS_QUIT,
+};
 
 struct _zend_coroutine {
+    int id;
+    zend_coro_status status;
     zend_coroutine *prev_coroutine;
-    zend_execute_data *execute_data;
+    zend_execute_data *current_execute_data;    //maybe call function execute data after coroutine start
+    zval retval;
+
+    zval          *vm_stack_top;
+	zval          *vm_stack_end;
+	zend_vm_stack  vm_stack;
+	size_t         vm_stack_page_size;
+
     char *prev_ctx;
     char *ctx;
-    int end;
-    int main;
     char stack[0];
 };
 
 char *make_context(char *stack, void (*coro_run)(zend_coroutine *co));
 void jump_context(char **curr_ctx, char *new_ctx, zend_coroutine *co);
 
-ZEND_API zend_coroutine *zend_coroutine_create(zend_execute_data *execute_data);
-ZEND_API void zend_coroutine_execute(zend_coroutine *co);
-ZEND_API void zend_coroutine_yield(zend_coroutine *co);
+ZEND_API zend_coroutine *zend_coroutine_create();
+ZEND_API void zend_coroutine_destroy(zend_coroutine *co);
+ZEND_API zend_coro_status zend_coroutine_execute();
+ZEND_API void zend_coroutine_yield();
 
-ZEND_API int zend_coroutine_sleep(zend_coroutine *co, int timeout);
+ZEND_API int zend_coroutine_sleep(int timeout);
 #endif

@@ -83,6 +83,8 @@ typedef struct _zend_object_handlers zend_object_handlers;
 typedef struct _zend_class_entry     zend_class_entry;
 typedef union  _zend_function        zend_function;
 typedef struct _zend_execute_data    zend_execute_data;
+typedef struct _zend_coroutine       zend_coroutine;
+typedef struct _zend_vm_stack        *zend_vm_stack;
 
 typedef struct _zval_struct     zval;
 

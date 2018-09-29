@@ -143,7 +143,7 @@ void init_executor(void) /* {{{ */
 	EG(error_handling) = EH_NORMAL;
 	EG(flags) = EG_FLAGS_INITIAL;
 
-	zend_vm_stack_init();
+	//zend_vm_stack_init();
 
 	zend_hash_init(&EG(symbol_table), 64, NULL, ZVAL_PTR_DTOR, 0);
 
@@ -157,6 +157,7 @@ void init_executor(void) /* {{{ */
 	ZVAL_UNDEF(&EG(user_exception_handler));
 
 	EG(current_execute_data) = NULL;
+    EG(current_coroutine) = zend_coroutine_create();
 
     EG(event) = zend_event_create();
 
@@ -313,7 +314,7 @@ void shutdown_executor(void) /* {{{ */
 		zend_stack_clean(&EG(user_error_handlers), (void (*)(void *))ZVAL_PTR_DTOR, 1);
 		zend_stack_clean(&EG(user_exception_handlers), (void (*)(void *))ZVAL_PTR_DTOR, 1);
 
-		zend_vm_stack_destroy();
+		//zend_vm_stack_destroy();
 
 		if (EG(full_tables_cleanup)) {
 			zend_hash_reverse_apply(EG(zend_constants), clean_non_persistent_constant_full);
@@ -381,6 +382,8 @@ void shutdown_executor(void) /* {{{ */
 #endif
 
 	EG(ht_iterators_used) = 0;
+
+    zend_coroutine_destroy(EG(current_coroutine));
 
     zend_event_destroy(EG(event));
 
@@ -685,7 +688,7 @@ int zend_call_function(zend_fcall_info *fci, zend_fcall_info_cache *fci_cache) /
 	fci->object = (func->common.fn_flags & ZEND_ACC_STATIC) ?
 		NULL : fci_cache->object;
 
-	call = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_FUNCTION | ZEND_CALL_DYNAMIC,
+	call = zend_vm_stack_push_call_frame(EG(current_coroutine), ZEND_CALL_TOP_FUNCTION | ZEND_CALL_DYNAMIC,
 		func, fci->param_count, fci_cache->called_scope, fci->object);
 
 	if (UNEXPECTED(func->common.fn_flags & ZEND_ACC_DEPRECATED)) {

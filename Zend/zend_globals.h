@@ -62,7 +62,6 @@ END_EXTERN_C()
 #define ZEND_EARLY_BINDING_DELAYED      1
 #define ZEND_EARLY_BINDING_DELAYED_ALL  2
 
-typedef struct _zend_vm_stack *zend_vm_stack;
 typedef struct _zend_ini_entry zend_ini_entry;
 
 
@@ -151,16 +150,18 @@ struct _zend_executor_globals {
 	HashTable *class_table;		/* class table */
 	HashTable *zend_constants;	/* constants table */
 
-	zval          *vm_stack_top;
-	zval          *vm_stack_end;
-	zend_vm_stack  vm_stack;
-	size_t         vm_stack_page_size;
+    /* move to zend_coroutine*/
+	//zval          *vm_stack_top;
+	//zval          *vm_stack_end;
+	//zend_vm_stack  vm_stack;
+	//size_t         vm_stack_page_size;
 
 	struct _zend_execute_data *current_execute_data;
 	zend_class_entry *fake_scope; /* used to avoid checks accessing properties */
 
     zend_event_module *event;
     zend_coroutine *current_coroutine;
+	zend_bool main_coroutine_active;
 
 	zend_long precision;
 

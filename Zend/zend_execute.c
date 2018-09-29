@@ -183,18 +183,18 @@ static zend_always_inline zend_vm_stack zend_vm_stack_new_page(size_t size, zend
 	return page;
 }
 
-ZEND_API void zend_vm_stack_init(void)
+ZEND_API void zend_vm_stack_init(zend_coroutine *co)
 {
-	EG(vm_stack_page_size) = ZEND_VM_STACK_PAGE_SIZE;
-	EG(vm_stack) = zend_vm_stack_new_page(ZEND_VM_STACK_PAGE_SIZE, NULL);
-	EG(vm_stack)->top++;
-	EG(vm_stack_top) = EG(vm_stack)->top;
-	EG(vm_stack_end) = EG(vm_stack)->end;
+    co->vm_stack_page_size = ZEND_VM_STACK_PAGE_SIZE;
+	co->vm_stack = zend_vm_stack_new_page(ZEND_VM_STACK_PAGE_SIZE, NULL);
+	co->vm_stack->top++;
+	co->vm_stack_top = co->vm_stack->top;
+	co->vm_stack_end = co->vm_stack->end;
 }
 
-ZEND_API void zend_vm_stack_destroy(void)
+ZEND_API void zend_vm_stack_destroy(zend_coroutine *co)
 {
-	zend_vm_stack stack = EG(vm_stack);
+	zend_vm_stack stack = co->vm_stack;
 
 	while (stack != NULL) {
 		zend_vm_stack p = stack->prev;
@@ -203,20 +203,20 @@ ZEND_API void zend_vm_stack_destroy(void)
 	}
 }
 
-ZEND_API void* zend_vm_stack_extend(size_t size)
+ZEND_API void* zend_vm_stack_extend(zend_coroutine *co, size_t size)
 {
 	zend_vm_stack stack;
 	void *ptr;
 
-	stack = EG(vm_stack);
-	stack->top = EG(vm_stack_top);
-	EG(vm_stack) = stack = zend_vm_stack_new_page(
-		EXPECTED(size < EG(vm_stack_page_size) - (ZEND_VM_STACK_HEADER_SLOTS * sizeof(zval))) ?
-			EG(vm_stack_page_size) : ZEND_VM_STACK_PAGE_ALIGNED_SIZE(size),
+	stack = co->vm_stack;
+	stack->top = co->vm_stack_top;
+	co->vm_stack = stack = zend_vm_stack_new_page(
+		EXPECTED(size < co->vm_stack_page_size - (ZEND_VM_STACK_HEADER_SLOTS * sizeof(zval))) ?
+			co->vm_stack_page_size : ZEND_VM_STACK_PAGE_ALIGNED_SIZE(size),
 		stack);
 	ptr = stack->top;
-	EG(vm_stack_top) = (void*)(((char*)ptr) + size);
-	EG(vm_stack_end) = stack->end;
+	co->vm_stack_top = (void*)(((char*)ptr) + size);
+	co->vm_stack_end = stack->end;
 	return ptr;
 }
 
@@ -2492,6 +2492,7 @@ static zend_always_inline void i_init_func_execute_data(zend_op_array *op_array,
 
 	EX_LOAD_RUN_TIME_CACHE(op_array);
 
+    EG(current_coroutine)->current_execute_data = execute_data;
 	EG(current_execute_data) = execute_data;
 #if defined(ZEND_VM_FP_GLOBAL_REG) && ((ZEND_VM_KIND == ZEND_VM_KIND_CALL) || (ZEND_VM_KIND == ZEND_VM_KIND_HYBRID))
 	EX(opline) = opline;
@@ -2581,6 +2582,7 @@ static zend_always_inline void i_init_code_execute_data(zend_execute_data *execu
 	}
 	EX_LOAD_RUN_TIME_CACHE(op_array);
 
+    EG(current_coroutine)->current_execute_data = execute_data;
 	EG(current_execute_data) = execute_data;
 }
 /* }}} */
@@ -2642,10 +2644,10 @@ static zend_always_inline zend_bool zend_is_by_ref_func_arg_fetch(uint32_t arg_n
 static zend_execute_data *zend_vm_stack_copy_call_frame(zend_execute_data *call, uint32_t passed_args, uint32_t additional_args) /* {{{ */
 {
 	zend_execute_data *new_call;
-	int used_stack = (EG(vm_stack_top) - (zval*)call) + additional_args;
+	int used_stack = (EG(current_coroutine)->vm_stack_top - (zval*)call) + additional_args;
 
 	/* copy call frame into new stack segment */
-	new_call = zend_vm_stack_extend(used_stack * sizeof(zval));
+	new_call = zend_vm_stack_extend(EG(current_coroutine), used_stack * sizeof(zval));
 	*new_call = *call;
 	ZEND_ADD_CALL_FLAG(new_call, ZEND_CALL_ALLOCATED);
 
@@ -2661,13 +2663,13 @@ static zend_execute_data *zend_vm_stack_copy_call_frame(zend_execute_data *call,
 	}
 
 	/* delete old call_frame from previous stack segment */
-	EG(vm_stack)->prev->top = (zval*)call;
+	EG(current_coroutine)->vm_stack->prev->top = (zval*)call;
 
 	/* delete previous stack segment if it becames empty */
-	if (UNEXPECTED(EG(vm_stack)->prev->top == ZEND_VM_STACK_ELEMENTS(EG(vm_stack)->prev))) {
-		zend_vm_stack r = EG(vm_stack)->prev;
+	if (UNEXPECTED(EG(current_coroutine)->vm_stack->prev->top == ZEND_VM_STACK_ELEMENTS(EG(current_coroutine)->vm_stack->prev))) {
+		zend_vm_stack r = EG(current_coroutine)->vm_stack->prev;
 
-		EG(vm_stack)->prev = r->prev;
+		EG(current_coroutine)->vm_stack->prev = r->prev;
 		efree(r);
 	}
 
@@ -2677,8 +2679,8 @@ static zend_execute_data *zend_vm_stack_copy_call_frame(zend_execute_data *call,
 
 static zend_always_inline void zend_vm_stack_extend_call_frame(zend_execute_data **call, uint32_t passed_args, uint32_t additional_args) /* {{{ */
 {
-	if (EXPECTED((uint32_t)(EG(vm_stack_end) - EG(vm_stack_top)) > additional_args)) {
-		EG(vm_stack_top) += additional_args;
+	if (EXPECTED((uint32_t)(EG(current_coroutine)->vm_stack_end - EG(current_coroutine)->vm_stack_top) > additional_args)) {
+		EG(current_coroutine)->vm_stack_top += additional_args;
 	} else {
 		*call = zend_vm_stack_copy_call_frame(*call, passed_args, additional_args);
 	}
@@ -2981,7 +2983,7 @@ static zend_never_inline zend_execute_data *zend_init_dynamic_call_string(zend_s
 		called_scope = NULL;
 	}
 
-	return zend_vm_stack_push_call_frame(ZEND_CALL_NESTED_FUNCTION | ZEND_CALL_DYNAMIC,
+	return zend_vm_stack_push_call_frame(EG(current_coroutine), ZEND_CALL_NESTED_FUNCTION | ZEND_CALL_DYNAMIC,
 		fbc, num_args, called_scope, NULL);
 }
 /* }}} */
@@ -3016,7 +3018,7 @@ static zend_never_inline zend_execute_data *zend_init_dynamic_call_object(zval *
 		init_func_run_time_cache(&fbc->op_array);
 	}
 
-	return zend_vm_stack_push_call_frame(call_info,
+	return zend_vm_stack_push_call_frame(EG(current_coroutine), call_info,
 		fbc, num_args, called_scope, object);
 }
 /* }}} */
@@ -3103,7 +3105,7 @@ static zend_never_inline zend_execute_data *zend_init_dynamic_call_array(zend_ar
 		init_func_run_time_cache(&fbc->op_array);
 	}
 
-	return zend_vm_stack_push_call_frame(call_info,
+	return zend_vm_stack_push_call_frame(EG(current_coroutine), call_info,
 		fbc, num_args, called_scope, object);
 }
 /* }}} */

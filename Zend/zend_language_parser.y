@@ -253,6 +253,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %type <ast> array_pair non_empty_array_pair_list array_pair_list possible_array_pair
 %type <ast> isset_variable type return_type type_expr
 %type <ast> identifier
+%type <ast> method_call
 
 %type <num> returns_ref function is_reference is_variadic variable_modifiers
 %type <num> method_modifiers non_empty_member_modifiers member_modifier
@@ -991,6 +992,7 @@ expr:
 			{ $$ = zend_ast_create_decl(ZEND_AST_CLOSURE, $3 | $14 | ZEND_ACC_STATIC, $2, $4,
 			      zend_string_init("{closure}", sizeof("{closure}") - 1, 0),
 			      $6, $8, $12, $9); CG(extra_fn_flags) = $10; }
+	|	T_GO method_call { $$ = $2; $2->attr = ZEND_IS_COROUTINE_CALL;}
 	|	T_GO function_call { $$ = $2; $2->attr = ZEND_IS_COROUTINE_CALL;}
 ;
 
@@ -1132,9 +1134,13 @@ callable_variable:
 			{ $$ = zend_ast_create(ZEND_AST_DIM, $1, $3); }
 	|	dereferencable '{' expr '}'
 			{ $$ = zend_ast_create(ZEND_AST_DIM, $1, $3); }
-	|	dereferencable T_OBJECT_OPERATOR property_name argument_list
-			{ $$ = zend_ast_create(ZEND_AST_METHOD_CALL, $1, $3, $4); }
+	|	method_call { $$ = $1; }
 	|	function_call { $$ = $1; }
+;
+
+method_call:
+    dereferencable T_OBJECT_OPERATOR property_name argument_list
+        { $$ = zend_ast_create(ZEND_AST_METHOD_CALL, $1, $3, $4); }
 ;
 
 variable:

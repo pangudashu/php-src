@@ -4048,6 +4048,7 @@ void zend_compile_method_call(znode *result, zend_ast *ast, uint32_t type) /* {{
 	zend_ast *obj_ast = ast->child[0];
 	zend_ast *method_ast = ast->child[1];
 	zend_ast *args_ast = ast->child[2];
+    int is_coroutine_call = (ast->attr == ZEND_IS_COROUTINE_CALL) ? 1 : 0;
 
 	znode obj_node, method_node;
 	zend_op *opline;
@@ -4088,8 +4089,7 @@ void zend_compile_method_call(znode *result, zend_ast *ast, uint32_t type) /* {{
 		}
 	}
 
-    //TODO:pg
-	zend_compile_call_common(result, args_ast, fbc, 0);
+	zend_compile_call_common(result, args_ast, fbc, is_coroutine_call);
 }
 /* }}} */
 
@@ -4104,6 +4104,7 @@ void zend_compile_static_call(znode *result, zend_ast *ast, uint32_t type) /* {{
 	zend_ast *class_ast = ast->child[0];
 	zend_ast *method_ast = ast->child[1];
 	zend_ast *args_ast = ast->child[2];
+    int is_coroutine_call = (ast->attr == ZEND_IS_COROUTINE_CALL) ? 1 : 0;
 
 	znode class_node, method_node;
 	zend_op *opline;
@@ -4162,8 +4163,7 @@ void zend_compile_static_call(znode *result, zend_ast *ast, uint32_t type) /* {{
 		}
 	}
 
-    //TODO:pg
-	zend_compile_call_common(result, args_ast, fbc, 0);
+	zend_compile_call_common(result, args_ast, fbc, is_coroutine_call);
 }
 /* }}} */
 

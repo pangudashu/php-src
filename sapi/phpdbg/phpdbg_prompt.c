@@ -1006,12 +1006,12 @@ PHPDBG_COMMAND(ev) /* {{{ */
 	zval retval;
 
 	zend_execute_data *original_execute_data = EG(current_execute_data);
-	zend_vm_stack original_stack = EG(vm_stack);
+	zend_vm_stack original_stack = EG(current_coroutine)->vm_stack;
 	zend_object *ex = NULL;
 
 	PHPDBG_OUTPUT_BACKUP();
 
-	original_stack->top = EG(vm_stack_top);
+	original_stack->top = EG(current_coroutine)->vm_stack_top;
 
 	if (PHPDBG_G(flags) & PHPDBG_IN_SIGNAL_HANDLER) {
 		phpdbg_try_access {
@@ -1053,9 +1053,9 @@ PHPDBG_COMMAND(ev) /* {{{ */
 			OBJ_RELEASE(ex);
 		}
 		EG(current_execute_data) = original_execute_data;
-		EG(vm_stack_top) = original_stack->top;
-		EG(vm_stack_end) = original_stack->end;
-		EG(vm_stack) = original_stack;
+		EG(current_coroutine)->vm_stack_top = original_stack->top;
+		EG(current_coroutine)->vm_stack_end = original_stack->end;
+		EG(current_coroutine)->vm_stack = original_stack;
 		EG(exit_status) = 0;
 	} zend_end_try();
 

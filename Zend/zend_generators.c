@@ -37,6 +37,7 @@ ZEND_API void zend_generator_restore_call_stack(zend_generator *generator) /* {{
 	call = generator->frozen_call_stack;
 	do {
 		new_call = zend_vm_stack_push_call_frame(
+            call->coroutine,
 			(ZEND_CALL_INFO(call) & ~ZEND_CALL_ALLOCATED),
 			call->func,
 			ZEND_CALL_NUM_ARGS(call),

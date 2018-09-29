@@ -4,69 +4,79 @@
 #include "zend_execute.h"
 #include "zend_event.h"
 
+static int coroutine_id = 0;
+
 void zend_coroutine_run(zend_coroutine *co)
 {
-    zend_execute_ex(co->execute_data);
+    zend_function *fbc = co->current_execute_data->func;
 
-    co->end = 1;
+    if (EXPECTED(fbc->type == ZEND_INTERNAL_FUNCTION)) {
+        fbc->internal_function.handler(co->current_execute_data, &co->retval);
+    } else {
+        zend_execute_ex(co->current_execute_data);
+    }
+
+    co->status = ZEND_CORO_STATUS_FINISHED;
     jump_context(&co->ctx, co->prev_ctx, co);
 }
 
-ZEND_API zend_coroutine *zend_coroutine_create(zend_execute_data *execute_data)
+ZEND_API zend_coroutine *zend_coroutine_create()
 {
     zend_coroutine *co;
     
     co = (zend_coroutine *)emalloc(sizeof(zend_coroutine) + ZEND_COROUTINE_STACK_SIZE);
 
-    execute_data->coroutine = co;
-    execute_data->is_coroutine_call = 1;
-    execute_data->prev_execute_data = NULL;
-
-    co->execute_data = execute_data;
+    co->id = ++coroutine_id;
+    co->status = ZEND_CORO_STATUS_INIT;
     co->ctx = make_context(co->stack + ZEND_COROUTINE_STACK_SIZE, zend_coroutine_run);
-    
+
+    zend_vm_stack_init(co);
+
     return co;
 }
 
-ZEND_API void zend_coroutine_yield(zend_coroutine *co)
+ZEND_API void zend_coroutine_destroy(zend_coroutine *co)
 {
-    co->execute_data = EG(current_execute_data);
-    jump_context(&co->ctx, co->prev_ctx, co);
+    zend_vm_stack_destroy(co);
+    efree(co);
 }
 
-ZEND_API void zend_coroutine_execute(zend_coroutine *co)
+ZEND_API void zend_coroutine_yield()
 {
-    zend_coroutine *prev_coroutine;
-    zend_execute_data *execute_data;
+    EG(current_coroutine)->status = ZEND_CORO_STATUS_SLEEP;
+    EG(current_coroutine)->current_execute_data = EG(current_execute_data);
+    jump_context(&EG(current_coroutine)->ctx, EG(current_coroutine)->prev_ctx, EG(current_coroutine));
+}
 
-    if (co->end) {
-        goto COROUTINE_EXECUTE_END;
+ZEND_API zend_coro_status zend_coroutine_execute()
+{
+    if (EG(current_coroutine)->status == ZEND_CORO_STATUS_FINISHED) {
+        goto COROUTINE_QUIT;
     }
 
-    //switch to call coroutine
-    prev_coroutine = EG(current_coroutine);
-    EG(current_coroutine) = co;
-    EG(current_execute_data) = co->execute_data;
-    
-    jump_context(&co->prev_ctx, co->ctx, co);
-    
-    if (prev_coroutine) {
-        EG(current_execute_data) = prev_coroutine->execute_data;
-        EG(current_coroutine) = prev_coroutine;
-    }
+    EG(current_execute_data) = EG(current_coroutine)->current_execute_data;
+    EG(current_coroutine)->status = ZEND_CORO_STATUS_WORKING;
+    jump_context(&EG(current_coroutine)->prev_ctx, EG(current_coroutine)->ctx, EG(current_coroutine));
 
     //yield or finish
-    if (!co->end) {
-        return;
+    if (EG(current_coroutine)->status == ZEND_CORO_STATUS_SLEEP) {
+        return EG(current_coroutine)->status;
     }
 
-COROUTINE_EXECUTE_END:
-    execute_data = co->execute_data;
-    while(execute_data){
-        zend_vm_stack_free_call_frame(execute_data);
-        execute_data = execute_data->prev_execute_data;
+COROUTINE_QUIT:
+    /*
+    if (co->current_execute_data == co->origin_execute_data && co->current_execute_data != NULL) {
+	    fbc = co->current_execute_data->func;
+
+        if (EXPECTED(fbc->type == ZEND_INTERNAL_FUNCTION)) {
+            zend_vm_stack_free_args(co->current_execute_data);
+        }
+
+        zend_vm_stack_free_call_frame(co->current_execute_data);
     }
-    efree(co);
+    */
+
+    return ZEND_CORO_STATUS_QUIT;
 }
 
 static void zend_coroutine_event_timeout(zend_event *ev, short type, void *arg)
@@ -78,16 +88,19 @@ static void zend_coroutine_event_timeout(zend_event *ev, short type, void *arg)
     }
 
     co = (zend_coroutine *)arg;
-    zend_coroutine_execute(co);
+    EG(current_coroutine) = co;
+    zend_coroutine_execute();
 }
 
-ZEND_API int zend_coroutine_sleep(zend_coroutine *co, int timeout)
+ZEND_API int zend_coroutine_sleep(int timeout)
 {
+    return sleep(timeout);
+
     int64_t timeout_ms = (int64_t)(timeout * 1000);
 
-    zend_event *ev = zend_event_new(0, ZEND_EV_TIMEOUT, timeout_ms, zend_coroutine_event_timeout, co);
+    zend_event *ev = zend_event_new(0, ZEND_EV_TIMEOUT, timeout_ms, zend_coroutine_event_timeout, EG(current_coroutine));
     zend_event_add(EG(event), ev);
-    zend_coroutine_yield(co);
+    zend_coroutine_yield();
     return SUCCESS;
 }
 
